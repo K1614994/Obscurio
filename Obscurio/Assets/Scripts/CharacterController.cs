@@ -1,63 +1,88 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events;
 
-[RequireComponent(typeof(BoxCollider2D))]
+
 public class CharacterController : MonoBehaviour
 {
-    const float skinWidth = 0.15f;
-    public int horizontalRayCount = 4;
-    public int verticalRayCount = 4;
+    [SerializeField] private float Jumping = 400f;
+    [SerializeField] private float SmoothMove = 0.5f;
+    [SerializeField] private LayerMask Ground;
+    [SerializeField] private Transform GroundCheck;
+    [SerializeField] private Transform CeilingCheck;
 
-    float horizontalRaySpacing;
-    float verticalRaySpacing;
+    const float GroundedRadius = 0.2f;
+    private bool Grounded;
+    const float CeilingRadius = 0.2f;
+    private Rigidbody2D rb;
+    private bool FaceRight = true;
+    private Vector3 velocity = Vector3.zero;
 
-    BoxCollider2D Collider;
-    RaycastOrigins raycastOrigins;
-    
-    // Use this for initialization
-    void Start()
+    [Header("Events")]
+    [Space]
+
+    public UnityEvent OnLandEvent;
+
+    [System.Serializable]
+    public class BoolEvent : UnityEvent<bool> { }
+
+    private void Awake()
     {
-        Collider = GetComponent<BoxCollider2D>();
+        rb = GetComponent<Rigidbody2D>();
+
+        if (OnLandEvent == null)
+            OnLandEvent = new UnityEvent();
     }
 
-    void Update()
+    private void FixedUpdate()
     {
-        UpdateRayCastOrigins();
-        CalculateRaySpacing();
+        bool wasGrounded = Grounded;
+        Grounded = false;
 
-        for (int i =0; i < verticalRayCount; i++)
+        Collider2D[] colliders = Physics2D.OverlapCircleAll(GroundCheck.position, GroundedRadius, Ground);
+            for (int i = 0; i< colliders.Length; i++)
         {
-            Debug.DrawRay(raycastOrigins.bottomLeft + Vector2.right * verticalRaySpacing * i, Vector2.up * -2, Color.red);
+            if (colliders[i].gameObject != gameObject)
+            {
+                Grounded = true;
+                if (!wasGrounded)
+                    OnLandEvent.Invoke();
+            }
+        } 
+    }
+
+
+    public void Move(float move, bool jump)
+    {
+        if (Grounded)
+        {
+            Vector3 targetVelocity = new Vector2(move * 10f, rb.velocity.y);
+            rb.velocity = Vector3.SmoothDamp(rb.velocity, targetVelocity, ref velocity, SmoothMove);
+
+            if (move > 0 && !FaceRight)
+            {
+                Flip();
+            }
+            else if (move < 0 && FaceRight)
+            {
+                Flip();
+            }
+        }
+        if(Grounded && jump)
+        {
+            Grounded = false;
+            rb.AddForce(new Vector2(0f, Jumping));
         }
     }
 
-    void UpdateRayCastOrigins()
+    private void Flip()
     {
-        Bounds bounds = Collider.bounds;
-        bounds.Expand(skinWidth * -2);
+        FaceRight = !FaceRight;
 
-        raycastOrigins.bottomLeft = new Vector2(bounds.min.x, bounds.min.y);
-        raycastOrigins.bottomRight = new Vector2(bounds.max.x, bounds.min.y);
-        raycastOrigins.topLeft = new Vector2(bounds.min.x, bounds.max.y);
-        raycastOrigins.topRight = new Vector2(bounds.max.x, bounds.max.y);
+        Vector3 scale = transform.localScale;
+        scale.x *= -1;
+        transform.localScale = scale;
     }
 
-    void CalculateRaySpacing()
-    {
-        Bounds bounds = Collider.bounds;
-        bounds.Expand(skinWidth * -2);
-
-        horizontalRayCount = Mathf.Clamp(horizontalRayCount, 2, int.MaxValue);
-        verticalRayCount = Mathf.Clamp(verticalRayCount, 2, int.MaxValue);
-
-        horizontalRaySpacing = bounds.size.y / (horizontalRayCount - 1);
-        verticalRaySpacing = bounds.size.x / (verticalRayCount - 1);
-
-    }
-
-    struct RaycastOrigins {
-        public Vector2 topLeft, topRight;
-        public Vector2 bottomLeft, bottomRight;
-    }
 }
